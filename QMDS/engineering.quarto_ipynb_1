@@ -1,0 +1,418 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "---\n",
+        "title: \"Engineering\"\n",
+        "format: html\n",
+        "jupyter: verso\n",
+        "execute:\n",
+        "  eval: true\n",
+        "---"
+      ],
+      "id": "60b10a93"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "from pathlib import Path\n",
+        "print(Path.cwd())"
+      ],
+      "id": "57a1f428",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "#what this cell does is find the root of the project htat we have at hand, I guess so that every future rendition of this can be executed the same way, so that we can hopefully avoid porting errors"
+      ],
+      "id": "414de9b3"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import os\n",
+        "from pathlib import Path\n",
+        "import duckdb\n",
+        "\n",
+        "_project_root = Path.cwd()\n",
+        "while not (_project_root / \".git\").exists():\n",
+        "    _project_root = _project_root.parent\n",
+        "    if _project_root == _project_root.parent:\n",
+        "        raise RuntimeError(\".git not found — are you inside the repo?\")\n",
+        "os.chdir(_project_root)\n",
+        "print(os.getcwd())"
+      ],
+      "id": "2f9e3998",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "#getting the dataset to memory using pandas"
+      ],
+      "id": "3063737d"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import pandas as pd\n",
+        "data = pd.read_csv(\"/Users/isaacwedaman/Documents/CS Stuff/iwedaman-okemo-data/Data/raw/EPA_SmartLocationDatabase_V3_Jan_2021_Final.csv\")\n",
+        "print(data.head())"
+      ],
+      "id": "b731f436",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "#now with duckdb"
+      ],
+      "id": "296a52bd"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "from pathlib import Path \n",
+        "import pandas as pd\n",
+        "import pyarrow.csv as pa_csv\n",
+        "import pyarrow.parquet as pq\n",
+        "\n",
+        "path = Path(\"/Users/isaacwedaman/Documents/CS Stuff/iwedaman-okemo-data/Data/raw/EPA_SmartLocationDatabase_V3_Jan_2021_Final.csv\")\n",
+        "\n",
+        "table = pa_csv.read_csv(path)\n",
+        "pq.write_table(table, \"Data/raw/walkability.parquet\")\n",
+        "parquet_path = Path(\"Data/raw/walkability.parquet\")\n",
+        "con = duckdb.connect()\n",
+        "con.execute(f\"\"\"\n",
+        "  CREATE OR REPLACE VIEW walkability AS \n",
+        "  SELECT * FROM read_parquet('{parquet_path}')\n",
+        "\"\"\")\n",
+        "df = con.execute(\"SELECT * FROM walkability\").df()\n",
+        "df.head()"
+      ],
+      "id": "4e6762a2",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "#now doing SQL with DUCK DB"
+      ],
+      "id": "69d44e7d"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "print(con.execute('SHOW ALL TABLES').df())\n",
+        "print(type(con))\n",
+        "print(id(con))\n",
+        "con.execute(\"DESCRIBE walkability\").df\n",
+        "\n",
+        "#now with pandas\n",
+        "data.describe()"
+      ],
+      "id": "c7e96489",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "#doing some data exploraiton with pandas, to begin"
+      ],
+      "id": "5680f419"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "print(data.columns)\n",
+        "\n",
+        "# print(data[\"CSA\"].value_counts(normalize=True))\n",
+        "# print(data[\"CSA_Name\"].value_counts(normalize=True))\n",
+        "print(data[\"NatWalkInd\"].value_counts(normalize=True))\n",
+        "print(data[\"NatWalkInd\"].describe())\n",
+        "\n",
+        "data[['GEOID10', 'GEOID20', 'STATEFP', 'COUNTYFP']].head()\n",
+        "print(data['GEOID20'].dtype)"
+      ],
+      "id": "6f639a06",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "#we need to ake a copy! so first, we copy the raw on which to make edits, and then we must start by converting the geoid columns, which are described as numbers, to float 64's, and move on frmo there"
+      ],
+      "id": "4cc381df"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "cleaned = data.copy()\n",
+        "cleaned[\"GEOID10\"].describe()\n",
+        "\n",
+        "#first, we change the type of float64 to int64 to pare the trailing 0\n",
+        "cleaned['GEOID20'] = cleaned['GEOID20'].astype('int64')\n",
+        "#now changing it to string to make it\n",
+        "cleaned[\"GEOID20\"] = cleaned['GEOID20'].astype(str)\n",
+        "#by making a number in the first place, we accidentally took away a potential leading 0, and now we add a leading 0, so the states 0-9 arent left out\n",
+        "cleaned[\"GEOID20\"] = cleaned['GEOID20'].str.zfill(12)\n",
+        "\n",
+        "cleaned[\"GEOID20\"].describe()\n",
+        "\n",
+        "#now, we must parse the counties, which are the first five codes of the dataset\n",
+        "cleaned['counties'] = cleaned['GEOID20'].str[:5]\n",
+        "\n",
+        "counts_per_county = (\n",
+        "    cleaned\n",
+        "    .groupby('counties')\n",
+        "    .size()\n",
+        "    .reset_index(name='n_blockgroups')\n",
+        ")\n",
+        "counts_per_county.head()\n"
+      ],
+      "id": "fd887f7d",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "Making the heat map of the continenetal united states"
+      ],
+      "id": "d457f3a4"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#mapping state code to state name\n",
+        "\n",
+        "STATE_FIPS = {\n",
+        "    \"01\": \"Alabama\", \"02\": \"Alaska\", \"04\": \"Arizona\", \"05\": \"Arkansas\",\n",
+        "    \"06\": \"California\", \"08\": \"Colorado\", \"09\": \"Connecticut\", \"10\": \"Delaware\",\n",
+        "    \"11\": \"District of Columbia\", \"12\": \"Florida\", \"13\": \"Georgia\", \"15\": \"Hawaii\",\n",
+        "    \"16\": \"Idaho\", \"17\": \"Illinois\", \"18\": \"Indiana\", \"19\": \"Iowa\",\n",
+        "    \"20\": \"Kansas\", \"21\": \"Kentucky\", \"22\": \"Louisiana\", \"23\": \"Maine\",\n",
+        "    \"24\": \"Maryland\", \"25\": \"Massachusetts\", \"26\": \"Michigan\", \"27\": \"Minnesota\",\n",
+        "    \"28\": \"Mississippi\", \"29\": \"Missouri\", \"30\": \"Montana\", \"31\": \"Nebraska\",\n",
+        "    \"32\": \"Nevada\", \"33\": \"New Hampshire\", \"34\": \"New Jersey\", \"35\": \"New Mexico\",\n",
+        "    \"36\": \"New York\", \"37\": \"North Carolina\", \"38\": \"North Dakota\", \"39\": \"Ohio\",\n",
+        "    \"40\": \"Oklahoma\", \"41\": \"Oregon\", \"42\": \"Pennsylvania\", \"44\": \"Rhode Island\",\n",
+        "    \"45\": \"South Carolina\", \"46\": \"South Dakota\", \"47\": \"Tennessee\", \"48\": \"Texas\",\n",
+        "    \"49\": \"Utah\", \"50\": \"Vermont\", \"51\": \"Virginia\", \"53\": \"Washington\",\n",
+        "    \"54\": \"West Virginia\", \"55\": \"Wisconsin\", \"56\": \"Wyoming\",\n",
+        "}\n",
+        "\n",
+        "cleaned['STATEFP'] = cleaned['STATEFP'].astype('int64')\n",
+        "cleaned[\"STATEFP\"] = cleaned['STATEFP'].astype(str)\n",
+        "cleaned[\"STATEFP\"] = cleaned['STATEFP'].str.zfill(12)\n",
+        "cleaned['states_name'] = cleaned['STATEFP'].map(STATE_FIPS)\n",
+        "print(cleaned[\"states_names\"].head())"
+      ],
+      "id": "6704555a",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import json\n",
+        "from urllib.request import urlopen\n",
+        "import plotly.express as px\n",
+        "\n",
+        "with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json') as f:\n",
+        "    counties = json.load(f)\n",
+        "\n",
+        "counties_names = {f['id']: f['properties']['NAME'] for f in counties['features']}\n",
+        "\n",
+        "counts_per_county['county_name'] = counts_per_county['counties'].map(counties_names)\n",
+        "\n",
+        "county_walk_index = (\n",
+        "    cleaned.groupby('counties')['NatWalkInd']\n",
+        "    .median()\n",
+        "    .reset_index(name='median_walk')\n",
+        ")\n",
+        "#adding \"county\" to each county's name \n",
+        "county_walk_index['county_name'] = county_walk_index['counties'].map(counties_names) + \" County\"\n",
+        "\n",
+        "all_fips = pd.DataFrame({'counties': [f['id'] for f in counties['features']]})\n",
+        "\n",
+        "# attach our walkability where we have it; counties with none become NaN\n",
+        "county_walk_full = all_fips.merge(\n",
+        "    county_walk_index[['counties', 'median_walk']],\n",
+        "    on='counties',\n",
+        "    how='left',\n",
+        ")\n",
+        "\n",
+        "#filling all instances of data = na to 0\n",
+        "county_walk_full['median_walk'] = county_walk_full['median_walk'].fillna(0)\n",
+        "\n",
+        "#adding the names to all counties\n",
+        "county_walk_full['county_name'] = county_walk_full['counties'].map(counties_names)\n",
+        "\n",
+        "\n",
+        "fig = px.choropleth(\n",
+        "    county_walk_full,\n",
+        "    geojson=counties,\n",
+        "    locations='counties',\n",
+        "    color='median_walk',\n",
+        "    color_continuous_scale=[\n",
+        "        [0.0, '#ececec'],\n",
+        "        [0.4, '#9ecae1'],\n",
+        "        [1.0, '#08306b'],\n",
+        "    ],\n",
+        "    range_color=(1, 16),\n",
+        "    scope='usa',\n",
+        "    hover_name='county_name',\n",
+        "    hover_data={'counties': True, 'median_walk': ':.1f'},\n",
+        "    labels={'median_walk': 'Walkability'},\n",
+        ")\n",
+        "fig.update_geos(showland=True, landcolor='#f7f7f7')\n",
+        "fig.update_layout(margin={'r': 0, 't': 0, 'l': 0, 'b': 0})\n",
+        "fig.show()\n"
+      ],
+      "id": "7b5a4e5c",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "Using shapely to blow the ocunties up proportionally"
+      ],
+      "id": "cd794d8b"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import copy\n",
+        "from shapely.geometry import shape, mapping\n",
+        "from shapely.affinity import scale\n",
+        "\n",
+        "# FIPS -> walkability score, for quick lookup\n",
+        "walk_lookup = dict(zip(county_walk_full['counties'], county_walk_full['median_walk']))\n",
+        "max_score = county_walk_full['median_walk'].max()\n",
+        "\n",
+        "# turn a walkability score into a size multiplier\n",
+        "def size_factor(score):\n",
+        "    if score <= 0:\n",
+        "        return 0.25                              # no-data counties shrink away\n",
+        "    return .6 + (score / max_score) ** 4 * 10  # walkable ones balloon\n",
+        "\n",
+        "# build a NEW geojson with each county scaled around its own centroid\n",
+        "blown_up = copy.deepcopy(counties)               # copy so the original stays intact\n",
+        "for feature in blown_up['features']:\n",
+        "    fips = feature['id']\n",
+        "    factor = size_factor(walk_lookup.get(fips, 0))\n",
+        "    geom = shape(feature['geometry'])            # geojson -> shapely shape\n",
+        "    scaled = scale(geom, xfact=factor, yfact=factor, origin='centroid')\n",
+        "    feature['geometry'] = mapping(scaled)        # shapely \n",
+        "\n",
+        "\n",
+        "fig = px.choropleth(\n",
+        "    county_walk_full,\n",
+        "    geojson=blown_up,          # <- the only change: distorted geometry\n",
+        "    locations='counties',\n",
+        "    color='median_walk',\n",
+        "    color_continuous_scale='Viridis',\n",
+        "    range_color=(0, 16),\n",
+        "    scope='usa',\n",
+        "    hover_name='county_name',\n",
+        "    hover_data={'counties': True, 'median_walk': ':.1f'},\n",
+        "    labels={'median_walk': 'Walkability'},\n",
+        ")\n",
+        "fig.update_geos(showland=True, landcolor='#f7f7f7')\n",
+        "fig.update_layout(margin={'r': 0, 't': 0, 'l': 0, 'b': 0})\n",
+        "fig.show()\n"
+      ],
+      "id": "5971b74e",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "making the cleaned dataset availiable to duck db/sql"
+      ],
+      "id": "aae05af9"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "print(data.columns.tolist())"
+      ],
+      "id": "73a1d4d0",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "con.register(\"clean\", cleaned)   \n",
+        "con.execute(\"\"\"\n",
+        "  CREATE OR REPLACE VIEW geo AS\n",
+        "  SELECT counties, GEOID20, STATEFP, COUNTYFP\n",
+        "  FROM clean\n",
+        "\"\"\")\n",
+        "con.execute(\"COPY geo TO 'Data/processed/geography.parquet' (FORMAT PARQUET)\")\n",
+        "\n",
+        "\n",
+        "con.execute(\"\"\"\n",
+        "  CREATE OR REPLACE VIEW walk AS\n",
+        "  SELECT counties, GEOID20, NatWalkInd, D2A_EPHHM, D3B, D4A\n",
+        "  FROM clean\n",
+        "\"\"\")\n",
+        "con.execute(\"COPY walk TO 'Data/processed/walkindex.parquet' (FORMAT PARQUET)\")\n",
+        "\n",
+        "con.execute(\"\"\"\n",
+        "  CREATE OR REPLACE VIEW csa AS\n",
+        "  SELECT counties, GEOID20, CSA, CSA_Name, NatWalkInd\n",
+        "  FROM clean\n",
+        "\"\"\")\n",
+        "con.execute(\"COPY csa TO 'Data/processed/CSA.parquet' (FORMAT PARQUET)\")"
+      ],
+      "id": "2c78f107",
+      "execution_count": null,
+      "outputs": []
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "name": "verso",
+      "language": "python",
+      "display_name": "verso",
+      "path": "/Users/isaacwedaman/Library/Jupyter/kernels/verso"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}

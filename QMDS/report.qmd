@@ -1,0 +1,66 @@
+---
+title: "Report"
+format: html
+jupyter: verso
+execute:
+eval: true
+---
+
+```{python}
+import os
+from pathlib import Path
+import duckdb
+
+_project_root = Path.cwd()
+while not (_project_root / ".git").exists():
+    _project_root = _project_root.parent
+    if _project_root == _project_root.parent:
+        raise RuntimeError(".git not found — are you inside the repo?")
+os.chdir(_project_root)
+print(os.getcwd())
+```
+
+```{python}
+import duckdb
+con = duckdb.connect()
+for parquet in ["geography", "walkindex", "CSA"]:
+    con.execute(f"""
+      CREATE OR REPLACE VIEW {parquet} AS
+      SELECT * FROM read_parquet('Data/processed/{parquet}.parquet')
+    """)
+```
+
+```{python}
+#merging both
+# SQL
+con.execute("""
+  SELECT STATEFP, AVG(NatWalkInd) AS avg_walk
+  FROM walkindex JOIN geography USING (counties)
+  GROUP BY STATEFP
+  ORDER BY avg_walk DESC
+  LIMIT 10
+""").df()
+
+walkindex = con.execute("SELECT * FROM walkindex").df()
+geography = con.execute("SELECT * FROM geography").df()
+walkindex.merge(geography, on="GEOID20").groupby("STATEFP")
+
+
+["NatWalkInd"].mean().sort_values(ascending=False).head(10)
+
+
+
+```
+
+```{python}
+#states by walkability
+import seaborn as sns 
+import matplotlib.pyplot as plt 
+
+fig, ax = plt.subplots()
+sns.barplot(data=df, x="District", y="Count", hue="District", ax=ax, palette="tab20", legend=True)
+plt.title("Top Zoning District Types in Vermont")
+ax.set_xticks([])
+plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
+plt.show()
+```

@@ -1,0 +1,5 @@
+Data/
+.venv/
+*.quarto_ipynb*
+/.quarto/
+/docs/_freeze/
