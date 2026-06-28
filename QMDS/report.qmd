@@ -3,7 +3,7 @@ title: "Report"
 format: html
 jupyter: verso
 execute:
-eval: true
+  eval: true
 ---
 
 ```{python}
@@ -40,12 +40,12 @@ con.execute("""
   ORDER BY avg_walk DESC
   LIMIT 10
 """).df()
+```
+```{python}
 
 walkindex = con.execute("SELECT * FROM walkindex").df()
 geography = con.execute("SELECT * FROM geography").df()
 walkindex.merge(geography, on="GEOID20").groupby("STATEFP")
-
-
 ["NatWalkInd"].mean().sort_values(ascending=False).head(10)
 
 

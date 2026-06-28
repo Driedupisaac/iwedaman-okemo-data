@@ -1,5 +1,6 @@
 Data/
 .venv/
+.DS_Store
 *.quarto_ipynb*
 /.quarto/
 /docs/_freeze/
