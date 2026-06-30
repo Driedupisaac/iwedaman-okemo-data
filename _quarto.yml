@@ -1,0 +1,15 @@
+project:
+  type: website
+
+website:
+  title: "Okemo Walkability Data Project"
+  navbar:
+    left:
+      - href: QMDS/engineering.qmd
+        text: Engineering
+      - href: QMDS/report.qmd
+        text: Report
+
+format:
+  html:
+    theme: cosmo
