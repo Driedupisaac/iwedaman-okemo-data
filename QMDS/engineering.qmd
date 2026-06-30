@@ -154,6 +154,10 @@ print(walkind["NatWalkInd"].value_counts())
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.barplot(data=NatWalkIndexDist, x="NatWalkInd", y = "row_count")
+plt.title("Distribution of National Walkability Index Across U.S.")
+plt.xlabel("National Walkability Index (1–20)")
+plt.ylabel("Number of Block Groups")
+
 
 
 #the data seems to have teo peaked, with a skew to the left, evidenced by the right tail and the larger (more frequent) left peak, with a trough for middling walkability, and a less frequent, though still bery much peaky peak for the 13-16 walkability range.

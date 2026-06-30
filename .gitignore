@@ -4,3 +4,4 @@ Data/
 *.quarto_ipynb*
 /.quarto/
 /docs/_freeze/
+**/*.quarto_ipynb

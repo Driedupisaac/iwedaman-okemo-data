@@ -10,6 +10,7 @@ execute:
 import os
 from pathlib import Path
 import duckdb
+import pandas as pd
 
 _project_root = Path.cwd()
 while not (_project_root / ".git").exists():
@@ -19,48 +20,105 @@ while not (_project_root / ".git").exists():
 os.chdir(_project_root)
 print(os.getcwd())
 ```
-
+Here, we are loading in all the parquets we have saved to do some data exploration on. 
 ```{python}
 import duckdb
 con = duckdb.connect()
-for parquet in ["geography", "walkindex", "CSA"]:
+for parquet in ["metro", "walk_metrics", "geography"]:
     con.execute(f"""
       CREATE OR REPLACE VIEW {parquet} AS
       SELECT * FROM read_parquet('Data/processed/{parquet}.parquet')
     """)
 ```
-
+Exploring the data. here, we see two peaks, with 9-13 and 13 - 16 being the most frequent walkability scores out of 20
 ```{python}
 #merging both
 # SQL
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+
+
+#reusing my old code jsut to have NatWalkIndexDist around
+#here is generating walkability
+con.execute(f"""
+    CREATE OR REPLACE VIEW walkability AS
+    SELECT * FROM read_parquet('{"Data/raw/walkability.parquet"}')
+""")
+print(con.execute("SELECT COUNT(*) AS n_blockgroups FROM walkability").df())
+#here is getting cleaned
 con.execute("""
-  SELECT STATEFP, AVG(NatWalkInd) AS avg_walk
-  FROM walkindex JOIN geography USING (counties)
-  GROUP BY STATEFP
-  ORDER BY avg_walk DESC
+    CREATE OR REPLACE VIEW cleaned AS
+    SELECT
+        *,
+        LPAD(CAST(GEOID20 AS BIGINT)::VARCHAR, 12, '0')               AS geoid20_str,
+        SUBSTR(LPAD(CAST(GEOID20 AS BIGINT)::VARCHAR, 12, '0'),1,5)   AS county_fips,
+        LPAD(CAST(STATEFP AS BIGINT)::VARCHAR, 2, '0')               AS state_fips,
+        NULLIF(D4A, -99999) AS D4A_clean
+    FROM walkability
+""")
+con.execute("SELECT geoid20_str, county_fips, state_fips FROM cleaned LIMIT 5").df()
+
+
+
+NatWalkIndexDist = con.execute("""
+    SELECT NatWalkInd, COUNT (*) AS row_count FROM cleaned   
+        GROUP BY NatWalkInd            
+        ORDER BY NatWalkInd ASC   
+""").df()
+
+
+
+sns.barplot(data=NatWalkIndexDist, x="NatWalkInd", y = "row_count")
+plt.title("Distribution of National Walkability Index Across U.S.")
+plt.xlabel("National Walkability Index (1–20)")
+plt.ylabel("Number of Block Groups")
+```
+Something of note here is that we have made a view already - we can reference walk_metrics, no need to add the .parquet
+```{python}
+walkindex_percent = con.execute("""
+    SELECT NatWalkInd, AVG(PCT_AO0) as avg_car_free, COUNT (*) AS n FROM walk_metrics  
+        GROUP BY NatWalkInd            
+        ORDER BY NatWalkInd ASC   
+""").df()
+print(walkindex_percent.describe())
+
+#now the pandas evil twin
+# print(walkindex_percent.groupby("NatWalkInd")["avg_car_free"].mean())
+wm = pd.read_parquet("Data/processed/walk_metrics.parquet")
+print(wm.groupby("NatWalkInd")["Pct_AO0"].mean())
+
+sns.barplot(data=walkindex_percent, x="NatWalkInd", y = "avg_car_free")
+
+
+
+```
+
+```{python}
+#ill worry about this later - sanity check to remember it 
+print(pd.read_parquet("Data/processed/metro.parquet").columns.tolist())
+```
+
+```{python}
+new_sql = con.execute("""
+  SELECT CSA_Name, SUM(TotPop) AS metro_pop, AVG(NatWalkInd) AS avg_walk
+  FROM metro 
+  WHERE CSA_Name IS NOT NULL
+  GROUP BY CSA_Name
+  ORDER BY metro_pop DESC
   LIMIT 10
 """).df()
-```
-```{python}
-
-walkindex = con.execute("SELECT * FROM walkindex").df()
-geography = con.execute("SELECT * FROM geography").df()
-walkindex.merge(geography, on="GEOID20").groupby("STATEFP")
-["NatWalkInd"].mean().sort_values(ascending=False).head(10)
 
 
+#pandas evil twin
+metro_df = pd.read_parquet("Data/processed/metro.parquet")
+metro_df.groupby("CSA_Name").agg(metro_pop=("TotPop","sum"), avg_walk_metro=("NatWalkInd","mean")).sort_values("metro_pop", ascending=False).head(10)
 
-```
+top10_metros = metro_df.groupby("CSA_Name").agg(metro_pop=("TotPop","sum"), avg_walk_metro=("NatWalkInd","mean")).sort_values("metro_pop", ascending=False).head(10).reset_index()
 
-```{python}
-#states by walkability
-import seaborn as sns 
-import matplotlib.pyplot as plt 
-
-fig, ax = plt.subplots()
-sns.barplot(data=df, x="District", y="Count", hue="District", ax=ax, palette="tab20", legend=True)
-plt.title("Top Zoning District Types in Vermont")
-ax.set_xticks([])
-plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
+sns.barplot(data=top10_metros, x="CSA_Name", y = "avg_walk_metro")
+plt.xticks(rotation=45, ha='right')
 plt.show()
 ```
+What did I learn? Well, especially if I am factoring my most recent discovery to be the most informative, that i have to do way more research. No way that New york is half as walkable as Los Angeles, and considerably less walkable than houston (I watched a youtube video about this). I do really like my previous "walk score vs ar ownership" correlation graph, however. my original goal for this project was to correlate more walkable cities, counties, and states with economic trends and municipality expenditures, with the goal of informing zoning and even cultural change! Ill keep digging! 
