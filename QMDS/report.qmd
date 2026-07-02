@@ -1,6 +1,8 @@
 ---
 title: "Report"
-format: html
+format: 
+  html: true
+  pdf: true
 jupyter: verso
 execute:
   eval: true
